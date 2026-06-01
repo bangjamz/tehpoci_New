@@ -93,7 +93,14 @@ export default function UserForm({ user: editUser, onClose, onSaved }) {
               placeholder="cth: Budi Santoso" />
           </div>
 
-          {!isEdit && (
+          {isEdit ? (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <input type="email" value={form.email} disabled
+                className="w-full border border-slate-100 bg-slate-50 rounded-xl px-4 py-2.5 text-sm text-slate-400 cursor-not-allowed" />
+              <p className="text-xs text-slate-400 mt-1">Email tidak bisa diubah. Untuk ganti email, hapus akun ini dan buat akun baru.</p>
+            </div>
+          ) : (
             <>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
@@ -121,7 +128,7 @@ export default function UserForm({ user: editUser, onClose, onSaved }) {
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              PIN {isEdit ? '(kosongkan jika tidak diubah)' : '*'}
+              PIN {isEdit ? '(kosongkan jika tidak diubah)' : '*'} <span className="text-slate-400 font-normal">(4–6 digit)</span>
             </label>
             <input type="password" inputMode="numeric" maxLength={6}
               value={form.pin}
