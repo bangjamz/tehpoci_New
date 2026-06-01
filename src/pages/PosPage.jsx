@@ -22,7 +22,7 @@ import { Wifi, WifiOff, LogOut, RefreshCw, Search, Coffee } from 'lucide-react'
 
 export default function PosPage() {
   const { user, userProfile, lockPin } = useAuthStore()
-  const { cart, addToCart, clearCart, getCartTotal, getCartTotalCost, getCartCount } = usePosStore()
+  const { cart, addToCart, updateQty, clearCart, getCartTotal, getCartTotalCost, getCartCount } = usePosStore()
 
   // Map productId → total qty in cart (sums all variants)
   const cartQtyMap = cart.reduce((acc, item) => {
@@ -314,10 +314,9 @@ export default function PosPage() {
       {variantProduct && (
         <VariantModal
           product={variantProduct}
-          onSelect={(product, variant) => {
-            addToCart(product, variant)
-            setVariantProduct(null)
-          }}
+          cart={cart}
+          onAdd={addToCart}
+          onUpdateQty={updateQty}
           onClose={() => setVariantProduct(null)}
         />
       )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, getDocs, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../lib/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -13,11 +13,49 @@ import { seedSampleProducts } from '../lib/firestoreHelpers'
 import {
   Coffee, Users, Package, TrendingUp, LogOut,
   Plus, Edit2, Trash2, RefreshCw,
-  BarChart2, ShoppingBag, ShieldCheck, X, Mail,
+  BarChart2, ShoppingBag, ShieldCheck, Download, AlertTriangle,
 } from 'lucide-react'
 
 const TABS = ['Ringkasan', 'Produk', 'Kasir', 'Administrator']
 const STORE_ID = 'branch_01'
+
+const PERIODS = [
+  { label: 'Hari Ini', days: 0 },
+  { label: '7 Hari',   days: 7 },
+  { label: '30 Hari',  days: 30 },
+]
+
+function getPeriodStart(days) {
+  const d = new Date()
+  if (days === 0) { d.setHours(0, 0, 0, 0); return d }
+  d.setDate(d.getDate() - days)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function exportCSV(transactions, label) {
+  const rows = [['Tanggal', 'Waktu', 'Kasir', 'Metode', 'Total', 'HPP', 'Laba']]
+  transactions.forEach(t => {
+    const ts = t.timestamp?.toDate ? t.timestamp.toDate() : new Date()
+    rows.push([
+      ts.toLocaleDateString('id-ID'),
+      ts.toLocaleTimeString('id-ID'),
+      t.cashier_name || '',
+      t.payment_method || '',
+      t.total_amount || 0,
+      t.total_cost || 0,
+      (t.total_amount || 0) - (t.total_cost || 0),
+    ])
+  })
+  const csv = rows.map(r => r.join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `laporan-tehpoci-${label.replace(/\s/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 export default function DashboardPage() {
   const { userProfile } = useAuthStore()
@@ -37,8 +75,12 @@ export default function DashboardPage() {
   const [editUser, setEditUser] = useState(null)
 
   // Analytics
-  const [todayStats, setTodayStats] = useState({ revenue: 0, cost: 0, txCount: 0 })
+  const [period, setPeriod] = useState(0) // index of PERIODS
+  const [transactions, setTransactions] = useState([])
   const [statsLoading, setStatsLoading] = useState(true)
+  const [resetStep, setResetStep] = useState(0) // 0=idle, 1=confirm1, 2=confirm2
+  const [resetting, setResetting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // Administrator (authorized owner emails)
   const [authorizedEmails, setAuthorizedEmails] = useState([])
@@ -79,25 +121,23 @@ export default function DashboardPage() {
     }).catch(() => setAdminLoading(false))
   }, [tab])
 
-  // Load today's stats
+  // Load stats untuk periode yang dipilih
   useEffect(() => {
     if (tab !== 'Ringkasan') return
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    setStatsLoading(true)
+    const since = getPeriodStart(PERIODS[period].days)
     const q = query(
       collection(db, 'stores', STORE_ID, 'transactions'),
-      where('timestamp', '>=', today),
+      where('timestamp', '>=', since),
       orderBy('timestamp', 'desc')
     )
     const unsub = onSnapshot(q, snap => {
-      const txs = snap.docs.map(d => d.data())
-      const revenue = txs.reduce((s, t) => s + (t.total_amount || 0), 0)
-      const cost = txs.reduce((s, t) => s + (t.total_cost || 0), 0)
-      setTodayStats({ revenue, cost, txCount: txs.length, profit: revenue - cost })
+      const txs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      setTransactions(txs)
       setStatsLoading(false)
     }, () => setStatsLoading(false))
     return unsub
-  }, [tab])
+  }, [tab, period])
 
   const handleDeleteProduct = async (product) => {
     if (!confirm(`Hapus produk "${product.name}"? Tindakan ini tidak bisa dibatalkan.`)) return
@@ -123,6 +163,35 @@ export default function DashboardPage() {
     if (!confirm(`Hapus akses administrator untuk ${email}?`)) return
     await updateDoc(doc(db, 'config', 'authorized_owners'), { emails: arrayRemove(email) })
     setAuthorizedEmails(prev => prev.filter(e => e !== email))
+  }
+
+  const stats = {
+    revenue: transactions.reduce((s, t) => s + (t.total_amount || 0), 0),
+    cost: transactions.reduce((s, t) => s + (t.total_cost || 0), 0),
+    txCount: transactions.length,
+    get profit() { return this.revenue - this.cost },
+  }
+
+  const handleExport = () => {
+    setExporting(true)
+    try { exportCSV(transactions, PERIODS[period].label) }
+    finally { setExporting(false) }
+  }
+
+  const handleResetData = async () => {
+    if (resetStep < 2) { setResetStep(s => s + 1); return }
+    setResetting(true)
+    try {
+      const snap = await getDocs(collection(db, 'stores', STORE_ID, 'transactions'))
+      const shiftSnap = await getDocs(collection(db, 'stores', STORE_ID, 'shifts'))
+      await Promise.all([
+        ...snap.docs.map(d => deleteDoc(d.ref)),
+        ...shiftSnap.docs.map(d => deleteDoc(d.ref)),
+      ])
+      setResetStep(0)
+    } finally {
+      setResetting(false)
+    }
   }
 
   const handleSeedProducts = async () => {
@@ -177,9 +246,23 @@ export default function DashboardPage() {
         {/* ── Tab: Ringkasan ────────────────────────────────────────── */}
         {tab === 'Ringkasan' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="font-bold text-slate-900 mb-1">Ringkasan Hari Ini</h2>
-              <p className="text-slate-400 text-sm">{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            {/* Header + period filter */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h2 className="font-bold text-slate-900">Laporan Penjualan</h2>
+                <p className="text-slate-400 text-sm">{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              </div>
+              <div className="flex gap-1.5 bg-slate-100 rounded-xl p-1">
+                {PERIODS.map((p, i) => (
+                  <button
+                    key={p.label}
+                    onClick={() => setPeriod(i)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${period === i ? 'bg-white text-brand-green shadow-sm' : 'text-slate-500'}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {statsLoading ? (
@@ -187,45 +270,115 @@ export default function DashboardPage() {
                 <RefreshCw className="animate-spin text-brand-green" size={24} />
               </div>
             ) : (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard label="Total Penjualan" value={formatRupiah(todayStats.revenue)} sub={`${todayStats.txCount} transaksi`} icon={TrendingUp} color="green" />
-                <StatCard label="Laba Kotor" value={formatRupiah(todayStats.profit || 0)} sub={`HPP: ${formatRupiah(todayStats.cost)}`} icon={BarChart2} color="blue" />
-                <StatCard label="Jml Transaksi" value={todayStats.txCount} sub="hari ini" icon={ShoppingBag} color="yellow" />
-                <StatCard label="Produk Aktif" value={products.filter(p => p.is_active).length} sub={`dari ${products.length} produk`} icon={Package} color="green" />
-              </div>
-            )}
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <StatCard label="Total Penjualan" value={formatRupiah(stats.revenue)} sub={`${stats.txCount} transaksi`} icon={TrendingUp} color="green" />
+                  <StatCard label="Laba Kotor" value={formatRupiah(stats.profit)} sub={`HPP: ${formatRupiah(stats.cost)}`} icon={BarChart2} color="blue" />
+                  <StatCard label="Jml Transaksi" value={stats.txCount} sub={PERIODS[period].label.toLowerCase()} icon={ShoppingBag} color="yellow" />
+                  <StatCard label="Produk Aktif" value={products.filter(p => p.is_active).length} sub={`dari ${products.length} produk`} icon={Package} color="green" />
+                </div>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-              <h3 className="font-semibold text-slate-700 mb-3">Produk Terdaftar</h3>
-              {products.length === 0 && (
-                <div className="text-center py-6">
-                  <p className="text-slate-400 text-sm mb-3">Belum ada produk. Tambahkan dulu di tab <strong>Produk</strong>.</p>
-                  <button onClick={handleSeedProducts} disabled={seeding}
-                    className="text-sm bg-brand-light text-brand-green font-semibold px-4 py-2 rounded-xl border border-brand-green border-opacity-30 active:scale-95 transition-all disabled:opacity-50">
-                    {seeding ? 'Menambahkan...' : '✨ Tambah 6 Produk Contoh Teh Poci'}
-                  </button>
-                </div>
-              )}
-              {products.slice(0, 5).map(p => (
-                <div key={p.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
-                  <div className="w-9 h-9 bg-slate-100 rounded-lg overflow-hidden shrink-0">
-                    {p.image_url
-                      ? <img src={p.image_url} alt="" className="w-full h-full object-cover" />
-                      : <div className="w-full h-full flex items-center justify-center text-lg">🍵</div>}
+                {/* Transaksi terbaru */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <h3 className="font-semibold text-slate-700">Transaksi {PERIODS[period].label}</h3>
+                    {transactions.length > 0 && (
+                      <button
+                        onClick={handleExport}
+                        disabled={exporting}
+                        className="flex items-center gap-1.5 text-sm font-medium text-brand-green hover:text-green-700 active:scale-95 transition-all"
+                      >
+                        <Download size={15} />
+                        Export CSV
+                      </button>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
-                    <p className="text-xs text-slate-400">{p.category}</p>
-                  </div>
-                  <p className="text-sm font-bold text-brand-green shrink-0">
-                    {p.has_variants ? `${formatRupiah(Math.min(...p.variants.map(v => v.price)))}+` : formatRupiah(p.price)}
-                  </p>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${p.is_active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                    {p.is_active ? 'Aktif' : 'Nonaktif'}
-                  </span>
+
+                  {transactions.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400">
+                      <ShoppingBag size={36} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Belum ada transaksi</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+                      {transactions.slice(0, 50).map(t => {
+                        const ts = t.timestamp?.toDate ? t.timestamp.toDate() : new Date()
+                        return (
+                          <div key={t.id} className="flex items-center gap-3 px-5 py-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-800">
+                                {ts.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} · {ts.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                              <p className="text-xs text-slate-400">{t.cashier_name} · {t.payment_method}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-sm font-bold text-slate-900">{formatRupiah(t.total_amount)}</p>
+                              <p className="text-xs text-green-600">+{formatRupiah((t.total_amount || 0) - (t.total_cost || 0))}</p>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+
+                {/* Reset Data */}
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-800 text-sm">Reset Semua Data Transaksi</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Menghapus seluruh transaksi dan shift dari database. Gunakan untuk membersihkan data percobaan.
+                        <strong className="text-brand-danger"> Tidak bisa dibatalkan.</strong>
+                      </p>
+                      {resetStep === 0 && (
+                        <button
+                          onClick={() => setResetStep(1)}
+                          className="mt-3 text-xs font-semibold text-brand-danger border border-brand-danger rounded-lg px-3 py-1.5 hover:bg-red-50 active:scale-95 transition-all"
+                        >
+                          Hapus Data Transaksi
+                        </button>
+                      )}
+                      {resetStep === 1 && (
+                        <div className="mt-3 bg-amber-50 rounded-xl p-3">
+                          <p className="text-amber-800 text-xs font-semibold mb-2">
+                            Yakin? Ini akan menghapus {transactions.length} transaksi yang tampil. Semua data shift juga akan hilang.
+                          </p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setResetStep(0)} className="text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 active:scale-95">
+                              Batal
+                            </button>
+                            <button onClick={() => setResetStep(2)} className="text-xs font-bold px-3 py-1.5 bg-brand-danger text-white rounded-lg active:scale-95">
+                              Ya, lanjutkan
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {resetStep === 2 && (
+                        <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3">
+                          <p className="text-brand-danger text-xs font-bold mb-2">
+                            KONFIRMASI TERAKHIR — Ketuk tombol merah untuk menghapus permanen.
+                          </p>
+                          <div className="flex gap-2">
+                            <button onClick={() => setResetStep(0)} className="text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 active:scale-95">
+                              Batal
+                            </button>
+                            <button
+                              onClick={handleResetData}
+                              disabled={resetting}
+                              className="text-xs font-black px-4 py-1.5 bg-brand-danger text-white rounded-lg active:scale-95 disabled:opacity-50"
+                            >
+                              {resetting ? 'Menghapus...' : 'HAPUS SEMUA DATA'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 

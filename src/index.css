@@ -27,6 +27,10 @@
 }
 
 @media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
   body * {
     visibility: hidden;
   }
@@ -35,11 +39,12 @@
     visibility: visible;
   }
   #receipt-print-area {
-    position: absolute;
+    position: fixed;
     left: 0;
     top: 0;
     width: 80mm;
     font-family: monospace;
     font-size: 12px;
+    line-height: 1.4;
   }
 }
