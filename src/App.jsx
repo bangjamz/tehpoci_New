@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
 import { useAuthListener } from './hooks/useAuth'
 import LoginPage from './pages/LoginPage'
@@ -12,17 +11,22 @@ export default function App() {
 
   const { user, userProfile, isPinUnlocked, loading } = useAuthStore()
 
+  // Masih mengecek status auth
   if (loading) return <LoadingScreen />
 
-  // Belum login
-  if (!user || !userProfile) return <LoginPage />
+  // Sudah login tapi profil Firestore belum dimuat → tampilkan loading
+  // (bukan login page — ini mencegah loop redirect saat Firestore lambat)
+  if (user && !userProfile) return <LoadingScreen />
 
-  // Sudah login tapi PIN belum di-unlock (khusus Cashier)
+  // Belum login sama sekali
+  if (!user) return <LoginPage />
+
+  // Kasir: PIN belum dibuka
   if (userProfile.role === 'CASHIER' && !isPinUnlocked) return <PinLockPage />
 
   // Owner → Dashboard
   if (userProfile.role === 'OWNER') return <DashboardPage />
 
-  // Cashier → POS
+  // Kasir → POS
   return <PosPage />
 }

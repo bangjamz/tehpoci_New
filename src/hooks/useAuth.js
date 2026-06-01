@@ -6,70 +6,62 @@ import { useAuthStore } from '../store/authStore'
 
 const BOOTSTRAP_OWNER_EMAIL = 'indrajamz@gmail.com'
 
-async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, reset }) {
+async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, reset }) {
   const userRef = doc(db, 'users', firebaseUser.uid)
 
-  // Retry hingga 3x jika Firestore belum terhubung
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const snap = await getDoc(userRef)
+  try {
+    const snap = await getDoc(userRef)
 
-      if (snap.exists()) {
-        const profile = { id: snap.id, ...snap.data() }
-        if (!profile.is_active) {
-          await auth.signOut()
-          reset()
-          return
-        }
-        setUserProfile(profile)
+    if (snap.exists()) {
+      const profile = { id: snap.id, ...snap.data() }
+      if (!profile.is_active) {
+        await auth.signOut()
+        reset()
         return
       }
-
-      // Dokumen belum ada — bootstrap jika Owner
-      if (firebaseUser.email === BOOTSTRAP_OWNER_EMAIL) {
-        const ownerProfile = {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          display_name: firebaseUser.displayName || 'Owner',
-          role: 'OWNER',
-          is_active: true,
-          assigned_store: 'branch_01',
-          created_at: serverTimestamp(),
-        }
-        await setDoc(userRef, ownerProfile)
-
-        // Buat store utama jika belum ada
-        const storeRef = doc(db, 'stores', 'branch_01')
-        const storeSnap = await getDoc(storeRef)
-        if (!storeSnap.exists()) {
-          await setDoc(storeRef, {
-            name: 'Teh Poci - Cabang Utama',
-            address: '',
-            created_at: serverTimestamp(),
-          })
-        }
-
-        setUserProfile({ id: firebaseUser.uid, ...ownerProfile })
-        return
-      }
-
-      // User tidak dikenal
-      await auth.signOut()
-      reset()
-      return
-    } catch (e) {
-      const isOffline = e?.code === 'unavailable' || e?.message?.includes('offline')
-      if (isOffline && attempt < 3) {
-        // Tunggu sebentar lalu retry
-        await new Promise(r => setTimeout(r, 1500 * attempt))
-        continue
-      }
-      console.error('Failed to fetch user profile:', e.message)
-      // Jika masih gagal setelah 3x, logout
-      await auth.signOut()
-      reset()
+      setUserProfile(profile)
+      setLoading(false)
       return
     }
+
+    // Dokumen tidak ada — bootstrap Owner
+    if (firebaseUser.email === BOOTSTRAP_OWNER_EMAIL) {
+      const ownerProfile = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        display_name: firebaseUser.displayName || 'Owner',
+        role: 'OWNER',
+        is_active: true,
+        assigned_store: 'branch_01',
+        created_at: serverTimestamp(),
+      }
+      await setDoc(userRef, ownerProfile)
+
+      const storeRef = doc(db, 'stores', 'branch_01')
+      const storeSnap = await getDoc(storeRef)
+      if (!storeSnap.exists()) {
+        await setDoc(storeRef, {
+          name: 'Teh Poci - Cabang Utama',
+          address: '',
+          created_at: serverTimestamp(),
+        })
+      }
+
+      setUserProfile({ id: firebaseUser.uid, ...ownerProfile })
+      setLoading(false)
+      return
+    }
+
+    // Email tidak dikenal
+    console.warn('User tidak terdaftar di sistem:', firebaseUser.email)
+    await auth.signOut()
+    reset()
+
+  } catch (e) {
+    console.error('Firestore error saat fetch profil:', e.code, e.message)
+    // JANGAN signOut saat Firestore error — tunjukkan error ke user saja
+    // User tetap login, tapi profil belum dimuat
+    setLoading(false)
   }
 }
 
@@ -77,14 +69,25 @@ export function useAuthListener() {
   const { setUser, setUserProfile, setLoading, reset } = useAuthStore()
 
   useEffect(() => {
-    // Handle redirect result dari signInWithRedirect (Google login)
-    getRedirectResult(auth).catch(() => {})
+    // Proses pending redirect dari Google sign-in
+    getRedirectResult(auth)
+      .then((result) => {
+        // Jika ada redirect result, onAuthStateChanged akan otomatis fire
+        if (result?.user) {
+          console.log('Redirect result diterima:', result.user.email)
+        }
+      })
+      .catch((e) => {
+        // auth/credential-already-in-use atau redirect dibatalkan — abaikan
+        if (e.code !== 'auth/credential-already-in-use') {
+          console.warn('Redirect result error:', e.code)
+        }
+      })
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser)
-        await fetchOrBootstrapProfile(firebaseUser, { setUserProfile, reset })
-        setLoading(false)
+        await fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, reset })
       } else {
         reset()
       }
