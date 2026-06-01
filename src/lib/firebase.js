@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { initializeAuth, GoogleAuthProvider, browserLocalPersistence } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
@@ -14,8 +14,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 
-// Gunakan getFirestore default dulu — persistentLocalCache bisa ditambah setelah stable
+// Explicit localStorage persistence — lebih reliable dari default di dev environment
+export const auth = initializeAuth(app, {
+  persistence: browserLocalPersistence,
+})
+
 export const db = getFirestore(app)
-export const auth = getAuth(app)
 export const storage = getStorage(app)
 export const googleProvider = new GoogleAuthProvider()
