@@ -12,8 +12,8 @@ import { seedSampleProducts } from '../lib/firestoreHelpers'
 
 import {
   Coffee, Users, Package, TrendingUp, LogOut,
-  Plus, Edit2, Trash2, RefreshCw,
-  BarChart2, ShoppingBag, ShieldCheck, Download, AlertTriangle,
+  Plus, Edit2, Trash2, RefreshCw, X, Mail,
+  BarChart2, ShoppingBag, ShieldCheck, Download, AlertTriangle, CheckCircle,
 } from 'lucide-react'
 
 const TABS = ['Ringkasan', 'Produk', 'Kasir', 'Administrator']
@@ -78,8 +78,10 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState(0) // index of PERIODS
   const [transactions, setTransactions] = useState([])
   const [statsLoading, setStatsLoading] = useState(true)
-  const [resetStep, setResetStep] = useState(0) // 0=idle, 1=confirm1, 2=confirm2
+  const [resetStep, setResetStep] = useState(0) // 0=idle, 1=confirm, 2=type-word
+  const [resetWord, setResetWord] = useState('')
   const [resetting, setResetting] = useState(false)
+  const [resetDone, setResetDone] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   // Administrator (authorized owner emails)
@@ -179,16 +181,21 @@ export default function DashboardPage() {
   }
 
   const handleResetData = async () => {
-    if (resetStep < 2) { setResetStep(s => s + 1); return }
+    if (resetWord.trim().toUpperCase() !== 'HAPUS') return
     setResetting(true)
     try {
-      const snap = await getDocs(collection(db, 'stores', STORE_ID, 'transactions'))
-      const shiftSnap = await getDocs(collection(db, 'stores', STORE_ID, 'shifts'))
+      const [txSnap, shiftSnap] = await Promise.all([
+        getDocs(collection(db, 'stores', STORE_ID, 'transactions')),
+        getDocs(collection(db, 'stores', STORE_ID, 'shifts')),
+      ])
       await Promise.all([
-        ...snap.docs.map(d => deleteDoc(d.ref)),
+        ...txSnap.docs.map(d => deleteDoc(d.ref)),
         ...shiftSnap.docs.map(d => deleteDoc(d.ref)),
       ])
       setResetStep(0)
+      setResetWord('')
+      setResetDone(true)
+      setTimeout(() => setResetDone(false), 4000)
     } finally {
       setResetting(false)
     }
@@ -278,20 +285,21 @@ export default function DashboardPage() {
                   <StatCard label="Produk Aktif" value={products.filter(p => p.is_active).length} sub={`dari ${products.length} produk`} icon={Package} color="green" />
                 </div>
 
-                {/* Transaksi terbaru */}
+                {/* Export + Transaksi */}
+                {transactions.length > 0 && (
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center gap-2 w-full justify-center bg-white border-2 border-brand-green text-brand-green font-semibold py-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-50 text-sm"
+                  >
+                    <Download size={16} />
+                    Export CSV — {PERIODS[period].label} ({transactions.length} transaksi)
+                  </button>
+                )}
+
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                   <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                    <h3 className="font-semibold text-slate-700">Transaksi {PERIODS[period].label}</h3>
-                    {transactions.length > 0 && (
-                      <button
-                        onClick={handleExport}
-                        disabled={exporting}
-                        className="flex items-center gap-1.5 text-sm font-medium text-brand-green hover:text-green-700 active:scale-95 transition-all"
-                      >
-                        <Download size={15} />
-                        Export CSV
-                      </button>
-                    )}
+                    <h3 className="font-semibold text-slate-700">Riwayat Transaksi · {PERIODS[period].label}</h3>
                   </div>
 
                   {transactions.length === 0 ? (
@@ -322,61 +330,6 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                {/* Reset Data */}
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-semibold text-slate-800 text-sm">Reset Semua Data Transaksi</p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Menghapus seluruh transaksi dan shift dari database. Gunakan untuk membersihkan data percobaan.
-                        <strong className="text-brand-danger"> Tidak bisa dibatalkan.</strong>
-                      </p>
-                      {resetStep === 0 && (
-                        <button
-                          onClick={() => setResetStep(1)}
-                          className="mt-3 text-xs font-semibold text-brand-danger border border-brand-danger rounded-lg px-3 py-1.5 hover:bg-red-50 active:scale-95 transition-all"
-                        >
-                          Hapus Data Transaksi
-                        </button>
-                      )}
-                      {resetStep === 1 && (
-                        <div className="mt-3 bg-amber-50 rounded-xl p-3">
-                          <p className="text-amber-800 text-xs font-semibold mb-2">
-                            Yakin? Ini akan menghapus {transactions.length} transaksi yang tampil. Semua data shift juga akan hilang.
-                          </p>
-                          <div className="flex gap-2">
-                            <button onClick={() => setResetStep(0)} className="text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 active:scale-95">
-                              Batal
-                            </button>
-                            <button onClick={() => setResetStep(2)} className="text-xs font-bold px-3 py-1.5 bg-brand-danger text-white rounded-lg active:scale-95">
-                              Ya, lanjutkan
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                      {resetStep === 2 && (
-                        <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-3">
-                          <p className="text-brand-danger text-xs font-bold mb-2">
-                            KONFIRMASI TERAKHIR — Ketuk tombol merah untuk menghapus permanen.
-                          </p>
-                          <div className="flex gap-2">
-                            <button onClick={() => setResetStep(0)} className="text-xs font-semibold px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 active:scale-95">
-                              Batal
-                            </button>
-                            <button
-                              onClick={handleResetData}
-                              disabled={resetting}
-                              className="text-xs font-black px-4 py-1.5 bg-brand-danger text-white rounded-lg active:scale-95 disabled:opacity-50"
-                            >
-                              {resetting ? 'Menghapus...' : 'HAPUS SEMUA DATA'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
               </>
             )}
           </div>
@@ -615,6 +568,72 @@ export default function DashboardPage() {
                 )}
               </div>
             )}
+
+            {/* ── Reset Data ─────────────────────────────────────── */}
+            <div className="mt-6">
+              <h3 className="font-bold text-slate-900 mb-1">Zona Berbahaya</h3>
+              <p className="text-slate-400 text-xs mb-3">Tindakan di bawah ini tidak bisa dibatalkan.</p>
+
+              {resetDone && (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
+                  <CheckCircle size={16} className="text-green-600 shrink-0" />
+                  <p className="text-green-800 text-sm font-medium">Semua data transaksi dan shift berhasil dihapus.</p>
+                </div>
+              )}
+
+              <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-5">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-brand-danger shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-slate-800 text-sm">Hapus Semua Data Transaksi & Shift</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Menghapus seluruh riwayat transaksi dan shift dari database secara permanen.
+                      Gunakan ini untuk membersihkan data percobaan sebelum operasi nyata.
+                    </p>
+
+                    {resetStep === 0 && (
+                      <button
+                        onClick={() => { setResetStep(1); setResetWord('') }}
+                        className="mt-3 text-xs font-semibold text-brand-danger border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 active:scale-95 transition-all"
+                      >
+                        Hapus Data Transaksi...
+                      </button>
+                    )}
+
+                    {resetStep >= 1 && (
+                      <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                        <p className="text-brand-danger text-xs font-bold">
+                          Ketik <span className="bg-red-100 px-1 rounded font-mono">HAPUS</span> untuk mengkonfirmasi penghapusan permanen:
+                        </p>
+                        <input
+                          type="text"
+                          value={resetWord}
+                          onChange={e => setResetWord(e.target.value)}
+                          placeholder="Ketik HAPUS"
+                          autoFocus
+                          className="w-full border-2 border-red-200 focus:border-brand-danger rounded-lg px-3 py-2 text-sm font-mono focus:outline-none transition-colors"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => { setResetStep(0); setResetWord('') }}
+                            className="text-xs font-semibold px-3 py-2 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 active:scale-95"
+                          >
+                            Batal
+                          </button>
+                          <button
+                            onClick={handleResetData}
+                            disabled={resetting || resetWord.trim().toUpperCase() !== 'HAPUS'}
+                            className="flex-1 text-xs font-black py-2 bg-brand-danger text-white rounded-lg active:scale-95 transition-all disabled:opacity-40"
+                          >
+                            {resetting ? 'Menghapus...' : 'Konfirmasi Hapus Semua Data'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
