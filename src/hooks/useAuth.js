@@ -6,19 +6,28 @@ import { useAuthStore } from '../store/authStore'
 
 const BOOTSTRAP_OWNER_EMAIL = 'indrajamz@gmail.com'
 
-async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, setProfileError, reset }) {
-  const userRef = doc(db, 'users', firebaseUser.uid)
+async function isAuthorizedOwner(email) {
+  try {
+    const snap = await getDoc(doc(db, 'config', 'authorized_owners'))
+    if (!snap.exists()) return email === BOOTSTRAP_OWNER_EMAIL
+    const emails = snap.data().emails || []
+    return emails.includes(email) || email === BOOTSTRAP_OWNER_EMAIL
+  } catch {
+    return email === BOOTSTRAP_OWNER_EMAIL
+  }
+}
 
-  console.log('[Auth] Fetching profile for:', firebaseUser.email)
+async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, setProfileError, setLoginError, reset }) {
+  const userRef = doc(db, 'users', firebaseUser.uid)
 
   try {
     const snap = await getDoc(userRef)
-    console.log('[Auth] Doc exists:', snap.exists())
 
     if (snap.exists()) {
       const profile = { id: snap.id, ...snap.data() }
       if (!profile.is_active) {
         await auth.signOut()
+        setLoginError('Akun kamu sudah dinonaktifkan oleh Owner.')
         reset()
         return
       }
@@ -27,9 +36,10 @@ async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoadin
       return
     }
 
-    // Dokumen belum ada
-    if (firebaseUser.email === BOOTSTRAP_OWNER_EMAIL) {
-      console.log('[Auth] Bootstrapping owner...')
+    // Tidak ada dokumen — cek apakah email ini authorized Owner
+    const authorized = await isAuthorizedOwner(firebaseUser.email)
+
+    if (authorized) {
       const ownerProfile = {
         uid: firebaseUser.uid,
         email: firebaseUser.email,
@@ -40,7 +50,6 @@ async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoadin
         created_at: serverTimestamp(),
       }
       await setDoc(userRef, ownerProfile)
-      console.log('[Auth] Owner doc created')
 
       const storeRef = doc(db, 'stores', 'branch_01')
       const storeSnap = await getDoc(storeRef)
@@ -50,7 +59,6 @@ async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoadin
           address: '',
           created_at: serverTimestamp(),
         })
-        console.log('[Auth] Store doc created')
       }
 
       setUserProfile({ id: firebaseUser.uid, ...ownerProfile })
@@ -58,27 +66,25 @@ async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoadin
       return
     }
 
-    console.warn('[Auth] Email tidak terdaftar:', firebaseUser.email)
+    // Email tidak diizinkan
     await auth.signOut()
+    setLoginError(`Akun Google (${firebaseUser.email}) tidak terdaftar di sistem ini. Hubungi Owner untuk mendapatkan akses.`)
     reset()
 
   } catch (e) {
-    console.error('[Auth] ERROR code:', e.code)
-    console.error('[Auth] ERROR message:', e.message)
-    // Set error state agar App.jsx bisa tampilkan pesan + tombol retry
+    console.error('[Auth] Error:', e.code, e.message)
     setProfileError(e.code + ': ' + e.message)
   }
 }
 
 export function useAuthListener() {
-  const { setUser, setUserProfile, setLoading, setProfileError, reset } = useAuthStore()
+  const { setUser, setUserProfile, setLoading, setProfileError, setLoginError, reset } = useAuthStore()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('[Auth] State changed:', firebaseUser?.email ?? 'logged out')
       if (firebaseUser) {
         setUser(firebaseUser)
-        await fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, setProfileError, reset })
+        await fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoading, setProfileError, setLoginError, reset })
       } else {
         reset()
       }

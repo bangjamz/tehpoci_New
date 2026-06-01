@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, getDocs, orderBy, deleteDoc, doc, limit } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, orderBy, deleteDoc, doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../lib/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -11,11 +11,11 @@ import UserForm from '../components/dashboard/UserForm'
 
 import {
   Coffee, Users, Package, TrendingUp, LogOut,
-  Plus, Edit2, Trash2, Eye, EyeOff, RefreshCw,
-  BarChart2, ShoppingBag,
+  Plus, Edit2, Trash2, RefreshCw,
+  BarChart2, ShoppingBag, ShieldCheck, X, Mail,
 } from 'lucide-react'
 
-const TABS = ['Ringkasan', 'Produk', 'Kasir']
+const TABS = ['Ringkasan', 'Produk', 'Kasir', 'Administrator']
 const STORE_ID = 'branch_01'
 
 export default function DashboardPage() {
@@ -39,6 +39,12 @@ export default function DashboardPage() {
   const [todayStats, setTodayStats] = useState({ revenue: 0, cost: 0, txCount: 0 })
   const [statsLoading, setStatsLoading] = useState(true)
 
+  // Administrator (authorized owner emails)
+  const [authorizedEmails, setAuthorizedEmails] = useState([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [newAdminEmail, setNewAdminEmail] = useState('')
+  const [adminSaving, setAdminSaving] = useState(false)
+
   // Load products real-time
   useEffect(() => {
     if (tab !== 'Produk' && tab !== 'Ringkasan') return
@@ -59,6 +65,16 @@ export default function DashboardPage() {
       setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
       setUserLoading(false)
     }, () => setUserLoading(false))
+  }, [tab])
+
+  // Load authorized owner emails
+  useEffect(() => {
+    if (tab !== 'Administrator') return
+    setAdminLoading(true)
+    getDoc(doc(db, 'config', 'authorized_owners')).then(snap => {
+      setAuthorizedEmails(snap.exists() ? (snap.data().emails || []) : [])
+      setAdminLoading(false)
+    }).catch(() => setAdminLoading(false))
   }, [tab])
 
   // Load today's stats
@@ -84,6 +100,27 @@ export default function DashboardPage() {
   const handleDeleteProduct = async (product) => {
     if (!confirm(`Hapus produk "${product.name}"? Tindakan ini tidak bisa dibatalkan.`)) return
     await deleteDoc(doc(db, 'products', product.id))
+  }
+
+  const handleAddAdmin = async (e) => {
+    e.preventDefault()
+    const email = newAdminEmail.trim().toLowerCase()
+    if (!email || !email.includes('@')) return
+    if (authorizedEmails.includes(email)) { setNewAdminEmail(''); return }
+    setAdminSaving(true)
+    try {
+      await setDoc(doc(db, 'config', 'authorized_owners'), { emails: arrayUnion(email) }, { merge: true })
+      setAuthorizedEmails(prev => [...prev, email])
+      setNewAdminEmail('')
+    } finally {
+      setAdminSaving(false)
+    }
+  }
+
+  const handleRemoveAdmin = async (email) => {
+    if (!confirm(`Hapus akses administrator untuk ${email}?`)) return
+    await updateDoc(doc(db, 'config', 'authorized_owners'), { emails: arrayRemove(email) })
+    setAuthorizedEmails(prev => prev.filter(e => e !== email))
   }
 
   const handleLogout = () => signOut(auth)
@@ -309,6 +346,94 @@ export default function DashboardPage() {
                     <Users size={36} className="mx-auto mb-2 opacity-30" />
                     <p>Belum ada kasir terdaftar.</p>
                   </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Tab: Administrator ────────────────────────────────────── */}
+        {tab === 'Administrator' && (
+          <div className="space-y-4 max-w-xl">
+            <div>
+              <h2 className="font-bold text-slate-900">Akun Administrator</h2>
+              <p className="text-slate-400 text-sm mt-0.5">
+                Email Google yang diizinkan login sebagai Owner/Admin. Mereka akan otomatis terdaftar saat login pertama kali.
+              </p>
+            </div>
+
+            {/* Form tambah admin */}
+            <form onSubmit={handleAddAdmin} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Tambah Email Administrator
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="email"
+                    value={newAdminEmail}
+                    onChange={e => setNewAdminEmail(e.target.value)}
+                    placeholder="email@gmail.com"
+                    className="w-full border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-green"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={adminSaving || !newAdminEmail.includes('@')}
+                  className="flex items-center gap-1.5 bg-brand-green text-white text-sm font-semibold px-4 py-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-40 shrink-0"
+                >
+                  <Plus size={16} /> Tambah
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">
+                ⚠️ Pastikan email yang ditambahkan adalah akun Google yang terpercaya — mereka akan punya akses penuh ke semua data.
+              </p>
+            </form>
+
+            {/* Daftar admin */}
+            {adminLoading ? (
+              <div className="flex items-center justify-center h-24">
+                <RefreshCw className="animate-spin text-brand-green" size={22} />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Owner pertama (hardcoded, tidak bisa dihapus) */}
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-brand-green border-opacity-30 flex items-center gap-3">
+                  <div className="w-9 h-9 bg-brand-green rounded-full flex items-center justify-center shrink-0">
+                    <ShieldCheck size={18} className="text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">indrajamz@gmail.com</p>
+                    <p className="text-xs text-slate-400">Owner Utama · tidak bisa dihapus</p>
+                  </div>
+                  <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-1 rounded-full shrink-0">
+                    Aktif
+                  </span>
+                </div>
+
+                {authorizedEmails.map(email => (
+                  <div key={email} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-3">
+                    <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center shrink-0">
+                      <ShieldCheck size={18} className="text-slate-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{email}</p>
+                      <p className="text-xs text-slate-400">Administrator</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveAdmin(email)}
+                      className="p-2 text-slate-300 hover:text-brand-danger hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+
+                {authorizedEmails.length === 0 && (
+                  <p className="text-center text-slate-400 text-sm py-4">
+                    Belum ada administrator tambahan.
+                  </p>
                 )}
               </div>
             )}

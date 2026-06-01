@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import { signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth'
 import { auth, googleProvider } from '../lib/firebase'
-import { Coffee } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import { Coffee, AlertCircle, X } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const { loginError, clearLoginError } = useAuthStore()
   const [mode, setMode] = useState('select')
 
   const handleGoogleLogin = async () => {
@@ -56,6 +58,20 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold text-brand-green">Teh Poci POS</h1>
           <p className="text-slate-500 text-sm mt-1">Sistem Kasir Digital</p>
         </div>
+
+        {/* Notifikasi akun tidak terdaftar */}
+        {loginError && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 flex gap-3">
+            <AlertCircle size={18} className="text-brand-danger shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-brand-danger mb-0.5">Akses Ditolak</p>
+              <p className="text-sm text-red-700">{loginError}</p>
+            </div>
+            <button onClick={clearLoginError} className="text-red-300 hover:text-red-500 shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl shadow-md p-6">
           {mode === 'select' && (

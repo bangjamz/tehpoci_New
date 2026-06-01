@@ -15,10 +15,16 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.is_active == true;
     }
 
+    // Config (authorized owners, app settings)
+    match /config/{docId} {
+      // Siapa saja yang authenticated bisa baca — dibutuhkan saat login untuk cek email
+      allow read: if request.auth != null;
+      // Hanya Owner yang bisa ubah
+      allow write: if isOwner();
+    }
+
     match /users/{userId} {
       allow read: if request.auth.uid == userId || isOwner();
-      // Allow a user to create ONLY their own document, ONLY if they don't have one yet
-      // Role validation: only OWNER or CASHIER allowed
       allow create: if request.auth.uid == userId
                     && request.resource.data.role in ['OWNER', 'CASHIER']
                     && request.resource.data.uid == request.auth.uid;
@@ -32,7 +38,6 @@ service cloud.firestore {
 
     match /stores/{storeId} {
       allow read: if isActiveUser();
-      // Allow Owner to create store, and also allow bootstrap (first setup)
       allow write: if isOwner() || (request.auth != null && !exists(/databases/$(database)/documents/stores/$(storeId)));
 
       match /shifts/{shiftId} {
