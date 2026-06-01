@@ -8,6 +8,7 @@ import { formatRupiah } from '../utils/currency'
 import StatCard from '../components/dashboard/StatCard'
 import ProductForm from '../components/dashboard/ProductForm'
 import UserForm from '../components/dashboard/UserForm'
+import { seedSampleProducts } from '../lib/firestoreHelpers'
 
 import {
   Coffee, Users, Package, TrendingUp, LogOut,
@@ -44,6 +45,7 @@ export default function DashboardPage() {
   const [adminLoading, setAdminLoading] = useState(false)
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const [adminSaving, setAdminSaving] = useState(false)
+  const [seeding, setSeeding] = useState(false)
 
   // Load products real-time
   useEffect(() => {
@@ -123,6 +125,12 @@ export default function DashboardPage() {
     setAuthorizedEmails(prev => prev.filter(e => e !== email))
   }
 
+  const handleSeedProducts = async () => {
+    if (!confirm('Tambahkan 6 produk contoh Teh Poci ke database? Kamu bisa edit atau hapus nanti.')) return
+    setSeeding(true)
+    try { await seedSampleProducts() } finally { setSeeding(false) }
+  }
+
   const handleLogout = () => signOut(auth)
 
   return (
@@ -188,7 +196,16 @@ export default function DashboardPage() {
             )}
 
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-              <h3 className="font-semibold text-slate-700 mb-3">5 Produk Terbaru</h3>
+              <h3 className="font-semibold text-slate-700 mb-3">Produk Terdaftar</h3>
+              {products.length === 0 && (
+                <div className="text-center py-6">
+                  <p className="text-slate-400 text-sm mb-3">Belum ada produk. Tambahkan dulu di tab <strong>Produk</strong>.</p>
+                  <button onClick={handleSeedProducts} disabled={seeding}
+                    className="text-sm bg-brand-light text-brand-green font-semibold px-4 py-2 rounded-xl border border-brand-green border-opacity-30 active:scale-95 transition-all disabled:opacity-50">
+                    {seeding ? 'Menambahkan...' : '✨ Tambah 6 Produk Contoh Teh Poci'}
+                  </button>
+                </div>
+              )}
               {products.slice(0, 5).map(p => (
                 <div key={p.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
                   <div className="w-9 h-9 bg-slate-100 rounded-lg overflow-hidden shrink-0">
@@ -292,7 +309,15 @@ export default function DashboardPage() {
                         </tr>
                       ))}
                       {products.length === 0 && (
-                        <tr><td colSpan={6} className="text-center py-10 text-slate-400">Belum ada produk. Klik "Tambah Produk".</td></tr>
+                        <tr>
+                          <td colSpan={6} className="text-center py-10">
+                            <p className="text-slate-400 text-sm mb-3">Belum ada produk.</p>
+                            <button onClick={handleSeedProducts} disabled={seeding}
+                              className="text-sm bg-brand-light text-brand-green font-semibold px-4 py-2 rounded-xl border border-brand-green border-opacity-30 active:scale-95 transition-all disabled:opacity-50">
+                              {seeding ? 'Menambahkan...' : '✨ Tambah 6 Produk Contoh Teh Poci'}
+                            </button>
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>

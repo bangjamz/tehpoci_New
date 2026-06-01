@@ -40,6 +40,7 @@ export const usePosStore = create((set, get) => ({
             costPrice,
             qty: 1,
             imageUrl: product.image_url || null,
+            stockItem: product.stock_item || false,
           },
         ],
       })

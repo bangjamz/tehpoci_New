@@ -1,6 +1,7 @@
 import {
   collection, query, where, getDocs, addDoc,
   updateDoc, doc, serverTimestamp, orderBy, limit,
+  increment, getDoc, writeBatch,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -51,7 +52,11 @@ export async function closeShift({ shiftId, expectedCash, actualCash }) {
 // ── Transactions ──────────────────────────────────────────────────────────────
 
 export async function createTransaction({ shiftId, items, totalAmount, totalCost, paymentMethod, cashierUid, cashierName }) {
-  const ref = await addDoc(collection(db, 'stores', STORE_ID, 'transactions'), {
+  const batch = writeBatch(db)
+
+  // 1. Buat dokumen transaksi
+  const txRef = doc(collection(db, 'stores', STORE_ID, 'transactions'))
+  batch.set(txRef, {
     shift_id: shiftId,
     cashier_uid: cashierUid,
     cashier_name: cashierName,
@@ -72,24 +77,20 @@ export async function createTransaction({ shiftId, items, totalAmount, totalCost
     store_id: STORE_ID,
   })
 
-  // Update expected_cash di shift aktif
-  const shiftRef = doc(db, 'stores', STORE_ID, 'shifts', shiftId)
-  const shiftSnap = await getDocs(query(
-    collection(db, 'stores', STORE_ID, 'shifts'),
-    where('__name__', '==', shiftId)
-  ))
+  // 2. Kurangi stok produk yang dipantau (stock_item = true)
+  const stockItems = items.filter(i => i.stockItem)
+  for (const item of stockItems) {
+    const productRef = doc(db, 'products', item.productId)
+    batch.update(productRef, { stock_count: increment(-item.qty) })
+  }
 
-  return ref.id
+  await batch.commit()
+  return txRef.id
 }
 
 export async function updateShiftExpectedCash(shiftId, addAmount) {
-  // Ambil shift dulu untuk update expected_cash
-  const { getDoc } = await import('firebase/firestore')
-  const snap = await getDoc(doc(db, 'stores', STORE_ID, 'shifts', shiftId))
-  if (!snap.exists()) return
-  const current = snap.data().expected_cash || 0
   await updateDoc(doc(db, 'stores', STORE_ID, 'shifts', shiftId), {
-    expected_cash: current + addAmount,
+    expected_cash: increment(addAmount),
   })
 }
 
@@ -104,4 +105,39 @@ export async function getProducts() {
   )
   const snap = await getDocs(q)
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+// ── Seed Data (untuk setup awal) ──────────────────────────────────────────────
+
+export async function seedSampleProducts() {
+  const samples = [
+    { name: 'Teh Poci Original', category: 'Teh Poci', price: 5000, cost_price: 2000, has_variants: false },
+    { name: 'Teh Poci Manis', category: 'Teh Poci', price: 5000, cost_price: 2000, has_variants: false },
+    {
+      name: 'Teh Poci Susu', category: 'Teh Poci', price: 7000, cost_price: 3000,
+      has_variants: true,
+      variants: [
+        { id: '1', name: 'Hangat', price: 7000, cost_price: 3000, is_active: true },
+        { id: '2', name: 'Dingin', price: 8000, cost_price: 3500, is_active: true },
+      ],
+    },
+    { name: 'Es Teh Manis', category: 'Es Teh', price: 4000, cost_price: 1500, has_variants: false },
+    { name: 'Es Teh Tawar', category: 'Es Teh', price: 3000, cost_price: 1000, has_variants: false },
+    { name: 'Es Jeruk', category: 'Minuman Lain', price: 6000, cost_price: 2500, has_variants: false },
+  ]
+
+  const batch = writeBatch(db)
+  for (const p of samples) {
+    const ref = doc(collection(db, 'products'))
+    batch.set(ref, {
+      ...p,
+      variants: p.variants || [],
+      image_url: '',
+      is_active: true,
+      stock_item: false,
+      stock_count: null,
+      created_at: serverTimestamp(),
+    })
+  }
+  await batch.commit()
 }

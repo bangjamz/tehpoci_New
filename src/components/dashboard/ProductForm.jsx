@@ -261,21 +261,31 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
           )}
 
           {/* Stock tracking */}
-          <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3">
-            <div>
-              <p className="text-sm font-medium text-slate-700">Pantau Stok?</p>
-              <p className="text-xs text-slate-400">Aktifkan jika stok terbatas (cth: cup, topping)</p>
+          <div className="bg-slate-50 rounded-xl p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Batasi Stok Harian?</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Untuk produk yang jumlahnya terbatas per hari.<br/>
+                  Contoh: menu spesial yang hanya tersedia 20 porsi.
+                </p>
+              </div>
+              <button
+                onClick={() => setForm(f => ({ ...f, stock_item: !f.stock_item }))}
+                className={`relative w-12 h-6 rounded-full transition-colors shrink-0 ${form.stock_item ? 'bg-brand-green' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.stock_item ? 'left-6' : 'left-0.5'}`} />
+              </button>
             </div>
-            <button
-              onClick={() => setForm(f => ({ ...f, stock_item: !f.stock_item }))}
-              className={`relative w-12 h-6 rounded-full transition-colors ${form.stock_item ? 'bg-brand-green' : 'bg-slate-300'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.stock_item ? 'left-6' : 'left-0.5'}`} />
-            </button>
+            {!form.stock_item && (
+              <p className="text-xs text-slate-400 mt-2 italic">
+                💡 Untuk Teh Poci biasa: biarkan nonaktif — stok minuman tidak dibatasi per produk.
+              </p>
+            )}
           </div>
           {form.stock_item && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Jumlah Stok</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Stok Tersedia Sekarang</label>
               <input type="number" value={form.stock_count}
                 onChange={e => setForm(f => ({ ...f, stock_count: e.target.value }))}
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-green"
