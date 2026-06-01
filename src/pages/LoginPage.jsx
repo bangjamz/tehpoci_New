@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithRedirect, signInWithEmailAndPassword } from 'firebase/auth'
 import { auth, googleProvider } from '../lib/firebase'
 import { Coffee } from 'lucide-react'
 
@@ -14,10 +14,11 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await signInWithPopup(auth, googleProvider)
+      // Redirect-based login — lebih kompatibel dengan COOP policy browser modern
+      await signInWithRedirect(auth, googleProvider)
+      // Halaman akan redirect ke Google, lalu kembali ke sini secara otomatis
     } catch (e) {
       setError('Login Google gagal. Coba lagi.')
-    } finally {
       setLoading(false)
     }
   }
@@ -57,7 +58,7 @@ export default function LoginPage() {
                 className="w-full touch-target flex items-center justify-center gap-3 bg-brand-green text-white rounded-xl px-4 py-3 font-semibold hover:bg-opacity-90 active:scale-95 transition-all disabled:opacity-50"
               >
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5 bg-white rounded-full p-0.5" />
-                Owner (Google)
+                {loading ? 'Mengarahkan ke Google...' : 'Owner (Google)'}
               </button>
               <button
                 onClick={() => setMode('cashier')}

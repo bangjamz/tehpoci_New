@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
+import { initializeFirestore, persistentLocalCache } from 'firebase/firestore'
 import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
@@ -14,11 +14,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 
-// Firestore dengan offline cache multi-tab (pengganti enableIndexedDbPersistence yang sudah deprecated)
+// persistentLocalCache tanpa multipleTabManager — lebih kompatibel di localhost
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
+  localCache: persistentLocalCache(),
 })
 
 export const auth = getAuth(app)
