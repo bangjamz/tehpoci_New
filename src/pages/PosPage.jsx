@@ -299,7 +299,7 @@ export default function PosPage() {
 
       {/* Modals */}
       {!activeShift && !shiftLoading && (
-        <ShiftOpenModal onOpen={handleOpenShift} loading={shiftActionLoading} />
+        <ShiftOpenModal onOpen={handleOpenShift} onLogout={handleLogout} loading={shiftActionLoading} />
       )}
 
       {showCloseShift && activeShift && (

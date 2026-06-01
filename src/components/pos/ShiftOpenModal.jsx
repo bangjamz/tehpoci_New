@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { DollarSign, X } from 'lucide-react'
+import { DollarSign, LogOut } from 'lucide-react'
 import { formatRupiah } from '../../utils/currency'
 
 const QUICK_AMOUNTS = [100000, 200000, 300000, 500000]
 
-export default function ShiftOpenModal({ onOpen, loading }) {
+export default function ShiftOpenModal({ onOpen, onLogout, loading }) {
   const [raw, setRaw] = useState('')
 
   const amount = parseInt(raw.replace(/\D/g, ''), 10) || 0
@@ -76,6 +76,14 @@ export default function ShiftOpenModal({ onOpen, loading }) {
               {loading ? 'Membuka Shift...' : 'Buka Shift →'}
             </button>
           </form>
+
+          <button
+            onClick={onLogout}
+            className="mt-4 w-full flex items-center justify-center gap-2 text-slate-400 text-sm py-2 hover:text-brand-danger transition-colors active:scale-95"
+          >
+            <LogOut size={15} />
+            Selesai Kerja / Keluar
+          </button>
         </div>
         <div className="safe-bottom" />
       </div>
