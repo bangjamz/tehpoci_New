@@ -107,32 +107,63 @@ export async function getProducts() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
-// ── Seed Data (untuk setup awal) ──────────────────────────────────────────────
+// ── Seed Data ─────────────────────────────────────────────────────────────────
+
+// Gambar placeholder teh es (public domain, bisa diganti via edit produk)
+const TEA_IMAGE = 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?auto=format&fit=crop&w=400&h=400&q=80'
+
+export async function seedEsTehPoci() {
+  const ref = doc(collection(db, 'products'))
+  await writeBatch(db).set(ref, {
+    name: 'Es Teh Poci',
+    category: 'Es Teh Poci',
+    has_variants: true,
+    price: 0,
+    cost_price: 0,
+    variants: [
+      { id: 'besar', name: 'Besar', price: 5000, cost_price: 3000, is_active: true },
+      { id: 'sedang', name: 'Sedang', price: 4000, cost_price: 2800, is_active: true },
+      { id: 'kecil', name: 'Kecil', price: 3500, cost_price: 2500, is_active: true },
+    ],
+    image_url: TEA_IMAGE,
+    is_active: true,
+    stock_item: false,
+    stock_count: null,
+    created_at: serverTimestamp(),
+  }).commit()
+}
 
 export async function seedSampleProducts() {
   const samples = [
-    { name: 'Teh Poci Original', category: 'Teh Poci', price: 5000, cost_price: 2000, has_variants: false },
-    { name: 'Teh Poci Manis', category: 'Teh Poci', price: 5000, cost_price: 2000, has_variants: false },
     {
-      name: 'Teh Poci Susu', category: 'Teh Poci', price: 7000, cost_price: 3000,
+      name: 'Es Teh Poci',
+      category: 'Es Teh Poci',
       has_variants: true,
+      price: 0, cost_price: 0,
+      image_url: TEA_IMAGE,
       variants: [
-        { id: '1', name: 'Hangat', price: 7000, cost_price: 3000, is_active: true },
-        { id: '2', name: 'Dingin', price: 8000, cost_price: 3500, is_active: true },
+        { id: 'besar', name: 'Besar', price: 5000, cost_price: 3000, is_active: true },
+        { id: 'sedang', name: 'Sedang', price: 4000, cost_price: 2800, is_active: true },
+        { id: 'kecil', name: 'Kecil', price: 3500, cost_price: 2500, is_active: true },
       ],
     },
-    { name: 'Es Teh Manis', category: 'Es Teh', price: 4000, cost_price: 1500, has_variants: false },
-    { name: 'Es Teh Tawar', category: 'Es Teh', price: 3000, cost_price: 1000, has_variants: false },
-    { name: 'Es Jeruk', category: 'Minuman Lain', price: 6000, cost_price: 2500, has_variants: false },
+    { name: 'Teh Poci Original', category: 'Teh Poci', price: 5000, cost_price: 2000, image_url: '' },
+    { name: 'Teh Poci Manis', category: 'Teh Poci', price: 5000, cost_price: 2000, image_url: '' },
+    { name: 'Es Teh Manis', category: 'Es Teh', price: 4000, cost_price: 1500, image_url: '' },
+    { name: 'Es Jeruk', category: 'Minuman Lain', price: 6000, cost_price: 2500, image_url: '' },
   ]
 
   const batch = writeBatch(db)
   for (const p of samples) {
     const ref = doc(collection(db, 'products'))
     batch.set(ref, {
-      ...p,
+      name: p.name,
+      category: p.category,
+      has_variants: p.has_variants || false,
+      price: p.price ?? 0,
+      cost_price: p.cost_price ?? 0,
       variants: p.variants || [],
-      image_url: '',
+      image_url: p.image_url || '',
       is_active: true,
       stock_item: false,
       stock_count: null,

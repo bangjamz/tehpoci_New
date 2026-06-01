@@ -22,7 +22,13 @@ import { Wifi, WifiOff, LogOut, RefreshCw, Search, Coffee } from 'lucide-react'
 
 export default function PosPage() {
   const { user, userProfile, lockPin } = useAuthStore()
-  const { cart, addToCart, clearCart, getCartTotal, getCartTotalCost } = usePosStore()
+  const { cart, addToCart, clearCart, getCartTotal, getCartTotalCost, getCartCount } = usePosStore()
+
+  // Map productId → total qty in cart (sums all variants)
+  const cartQtyMap = cart.reduce((acc, item) => {
+    acc[item.productId] = (acc[item.productId] || 0) + item.qty
+    return acc
+  }, {})
   const { activeShift, setActiveShift, clearShift } = usePosStore()
   const isOnline = useNetworkStatus()
 
@@ -278,6 +284,7 @@ export default function PosPage() {
                 key={product.id}
                 product={product}
                 onClick={handleProductClick}
+                cartQty={cartQtyMap[product.id] || 0}
               />
             ))}
           </div>

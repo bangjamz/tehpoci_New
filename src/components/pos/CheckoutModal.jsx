@@ -2,11 +2,20 @@ import { useState } from 'react'
 import { X, Banknote, QrCode } from 'lucide-react'
 import { formatRupiah } from '../../utils/currency'
 
-const QUICK_CASH = [50000, 100000, 50000 * 3, 100000 * 2]
+const QUICK_AMOUNTS = [5000, 10000, 20000, 50000, 100000, 200000]
+
+function getQuickCash(total) {
+  const rounds = QUICK_AMOUNTS.filter(a => a >= total)
+  if (rounds.length >= 4) return rounds.slice(0, 4)
+  // pad with multiples of 50k above total
+  const extras = [50000, 100000, 200000, 500000].filter(a => a >= total && !rounds.includes(a))
+  return [...rounds, ...extras].slice(0, 4)
+}
 
 export default function CheckoutModal({ total, cart, onConfirm, onClose, loading }) {
   const [method, setMethod] = useState('CASH')
   const [rawCash, setRawCash] = useState('')
+  const quickCash = getQuickCash(total)
 
   const cashPaid = parseInt(rawCash.replace(/\D/g, ''), 10) || 0
   const change = cashPaid - total
@@ -65,12 +74,16 @@ export default function CheckoutModal({ total, cart, onConfirm, onClose, loading
                 className="w-full border-2 border-slate-200 focus:border-brand-green rounded-xl px-4 py-3 text-xl font-bold focus:outline-none transition-colors"
               />
               <div className="grid grid-cols-4 gap-1.5 mt-2">
-                {QUICK_CASH.map(a => (
+                {quickCash.map(a => (
                   <button
                     key={a}
                     type="button"
                     onClick={() => setRawCash(String(a))}
-                    className="text-[11px] font-medium border border-slate-200 rounded-lg py-1.5 hover:border-brand-green hover:text-brand-green active:scale-95 transition-all"
+                    className={`text-[11px] font-semibold border-2 rounded-xl py-2 active:scale-95 transition-all
+                      ${rawCash === String(a)
+                        ? 'border-brand-green bg-brand-light text-brand-green'
+                        : 'border-slate-200 hover:border-brand-green hover:text-brand-green'
+                      }`}
                   >
                     {formatRupiah(a)}
                   </button>

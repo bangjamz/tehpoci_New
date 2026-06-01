@@ -1,7 +1,7 @@
 import { Plus, AlertTriangle } from 'lucide-react'
 import { formatRupiah } from '../../utils/currency'
 
-export default function ProductCard({ product, onClick }) {
+export default function ProductCard({ product, onClick, cartQty = 0 }) {
   const isLowStock = product.stock_item && product.stock_count != null && product.stock_count <= 5
   const isOutOfStock = product.stock_item && product.stock_count != null && product.stock_count <= 0
 
@@ -14,11 +14,13 @@ export default function ProductCard({ product, onClick }) {
       onClick={() => !isOutOfStock && onClick(product)}
       disabled={isOutOfStock}
       className={`
-        relative flex flex-col bg-white rounded-2xl overflow-hidden shadow-sm border-2 text-left
+        relative flex flex-col bg-white rounded-2xl overflow-hidden shadow-sm border-2 text-left w-full
         active:scale-95 transition-all duration-150
         ${isOutOfStock
           ? 'border-slate-100 opacity-50 cursor-not-allowed'
-          : 'border-transparent hover:border-brand-green hover:shadow-md'
+          : cartQty > 0
+            ? 'border-brand-green shadow-md'
+            : 'border-transparent hover:border-brand-green hover:shadow-md'
         }
       `}
     >
@@ -32,7 +34,7 @@ export default function ProductCard({ product, onClick }) {
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-3xl">
+          <div className="w-full h-full flex items-center justify-center text-4xl">
             🍵
           </div>
         )}
@@ -52,19 +54,26 @@ export default function ProductCard({ product, onClick }) {
           </div>
         )}
 
-        {!isOutOfStock && (
-          <div className="absolute bottom-1.5 right-1.5 w-7 h-7 bg-brand-green rounded-full flex items-center justify-center shadow">
-            <Plus size={16} className="text-white" />
+        {/* Cart qty badge */}
+        {cartQty > 0 && (
+          <div className="absolute top-1.5 right-1.5 min-w-[24px] h-6 bg-brand-green text-white text-xs font-black rounded-full flex items-center justify-center px-1.5 shadow-lg">
+            {cartQty}
+          </div>
+        )}
+
+        {!isOutOfStock && cartQty === 0 && (
+          <div className="absolute bottom-1.5 right-1.5 w-8 h-8 bg-brand-green rounded-full flex items-center justify-center shadow">
+            <Plus size={18} className="text-white" />
           </div>
         )}
       </div>
 
       {/* Info */}
-      <div className="p-2.5">
-        <p className="text-xs font-semibold text-slate-800 leading-tight line-clamp-2 mb-1">
+      <div className="p-3">
+        <p className="text-sm font-semibold text-slate-800 leading-tight line-clamp-2 mb-1">
           {product.name}
         </p>
-        <p className="text-sm font-bold text-brand-green">{displayPrice}</p>
+        <p className="text-base font-bold text-brand-green">{displayPrice}</p>
         {product.has_variants && (
           <p className="text-[10px] text-slate-400 mt-0.5">{product.variants?.length} varian</p>
         )}
