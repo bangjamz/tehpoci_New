@@ -3,7 +3,11 @@ import { create } from 'zustand'
 export const usePosStore = create((set, get) => ({
   // Shift aktif
   activeShift: null,
-  setActiveShift: (shift) => set({ activeShift: shift }),
+  setActiveShift: (shiftOrUpdater) => set(state => ({
+    activeShift: typeof shiftOrUpdater === 'function'
+      ? shiftOrUpdater(state.activeShift)
+      : shiftOrUpdater,
+  })),
   clearShift: () => set({ activeShift: null }),
 
   // Cart
