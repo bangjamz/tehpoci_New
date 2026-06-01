@@ -16,7 +16,7 @@ export default function ShiftCloseModal({ shift, onClose, onCancel, loading }) {
 
   const handleNext = (e) => {
     e.preventDefault()
-    if (actualCash <= 0) return
+    if (raw === '') return
     setStep('confirm')
   }
 
@@ -72,7 +72,7 @@ export default function ShiftCloseModal({ shift, onClose, onCancel, loading }) {
                 </div>
                 <button
                   type="submit"
-                  disabled={actualCash <= 0}
+                  disabled={raw === ''}
                   className="w-full touch-target bg-brand-danger text-white font-bold rounded-xl py-3 active:scale-95 transition-all disabled:opacity-40"
                 >
                   Lihat Ringkasan →
@@ -109,9 +109,12 @@ export default function ShiftCloseModal({ shift, onClose, onCancel, loading }) {
               </div>
 
               {variance < 0 && (
-                <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4">
-                  <p className="text-brand-danger text-sm font-medium">
-                    ⚠️ Uang kurang {formatRupiah(Math.abs(variance))}. Pastikan sudah dihitung dengan benar.
+                <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4 space-y-1">
+                  <p className="text-brand-danger text-sm font-bold">
+                    ⚠️ Uang kurang {formatRupiah(Math.abs(variance))}
+                  </p>
+                  <p className="text-red-400 text-xs">
+                    Selisih ini otomatis tercatat di sistem. Laporkan ke Owner untuk tindak lanjut.
                   </p>
                 </div>
               )}
