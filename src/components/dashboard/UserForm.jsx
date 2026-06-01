@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { initializeApp, deleteApp } from 'firebase/app'
+import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { db, auth } from '../../lib/firebase'
+import { db, firebaseConfig } from '../../lib/firebase'
 import { X, Eye, EyeOff } from 'lucide-react'
 
 function hashPin(pin) { return btoa(pin) }
@@ -32,8 +33,16 @@ export default function UserForm({ user: editUser, onClose, onSaved }) {
     setSaving(true)
     try {
       if (!isEdit) {
-        // Buat akun Firebase Auth baru
-        const cred = await createUserWithEmailAndPassword(auth, form.email, form.password)
+        // Gunakan secondary app agar Owner tidak ter-logout saat membuat akun kasir
+        const secondaryApp = initializeApp(firebaseConfig, `create-user-${Date.now()}`)
+        const secondaryAuth = getAuth(secondaryApp)
+        let cred
+        try {
+          cred = await createUserWithEmailAndPassword(secondaryAuth, form.email, form.password)
+        } finally {
+          await secondaryAuth.signOut()
+          await deleteApp(secondaryApp)
+        }
         await setDoc(doc(db, 'users', cred.user.uid), {
           uid: cred.user.uid,
           email: form.email,
