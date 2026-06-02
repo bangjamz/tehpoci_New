@@ -36,7 +36,7 @@ function VariantRow({ variant, onChange, onRemove }) {
   )
 }
 
-export default function ProductForm({ product, categories, onClose, onSaved }) {
+export default function ProductForm({ product, categories, existingNames = [], onClose, onSaved }) {
   const isEdit = !!product?.id
   const fileRef = useRef()
 
@@ -103,6 +103,13 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
     }
     if (form.has_variants && form.variants.some(v => !v.name || !v.price || !v.cost_price)) {
       setError('Semua varian harus diisi lengkap'); return
+    }
+
+    // Cek duplikat nama (hanya saat tambah baru atau ganti nama saat edit)
+    const nameLower = form.name.trim().toLowerCase()
+    if (existingNames.includes(nameLower)) {
+      setError(`Produk dengan nama "${form.name.trim()}" sudah ada. Gunakan tombol Edit untuk mengubah produk yang sudah ada.`)
+      return
     }
 
     setSaving(true)

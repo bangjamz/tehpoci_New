@@ -65,6 +65,9 @@ export default function DashboardPage() {
   const [editProduct, setEditProduct] = useState(null)
   const [productCategories, setProductCategories] = useState([])
   const [seeding, setSeeding] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [savedMsg, setSavedMsg] = useState('')
 
   // ── Ringkasan (stats + chart) ───────────────────────────────────────
   const [weekTxs, setWeekTxs] = useState([])
@@ -176,6 +179,25 @@ export default function DashboardPage() {
   const handleDeleteProduct = async (p) => {
     if (!confirm(`Hapus produk "${p.name}"? Tidak bisa dibatalkan.`)) return
     await deleteDoc(doc(db, 'products', p.id))
+    setSelectedProducts(prev => { const n = new Set(prev); n.delete(p.id); return n })
+  }
+
+  const handleBulkDelete = async () => {
+    const count = selectedProducts.size
+    if (!confirm(`Hapus ${count} produk yang dipilih?\n\nTindakan ini tidak bisa dibatalkan.`)) return
+    setBulkDeleting(true)
+    try {
+      await Promise.all([...selectedProducts].map(id => deleteDoc(doc(db, 'products', id))))
+      setSelectedProducts(new Set())
+    } finally { setBulkDeleting(false) }
+  }
+
+  const toggleSelectProduct = (id) => setSelectedProducts(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n
+  })
+
+  const toggleSelectAll = () => {
+    setSelectedProducts(selectedProducts.size === products.length ? new Set() : new Set(products.map(p => p.id)))
   }
 
   const handleSeedProducts = async () => {
@@ -392,9 +414,37 @@ export default function DashboardPage() {
               </button>
             </div>
 
+            {/* Saved success toast */}
+            {savedMsg && (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-2xl px-4 py-3">
+                <CheckCircle size={16} className="text-green-600 shrink-0" />
+                <p className="text-green-800 text-sm font-medium">{savedMsg}</p>
+              </div>
+            )}
+
             {productError && (
               <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-brand-danger">
                 ⚠️ Gagal memuat produk: <span className="font-mono text-xs">{productError}</span>
+              </div>
+            )}
+
+            {/* Bulk action bar */}
+            {selectedProducts.size > 0 && (
+              <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                <p className="text-sm font-semibold text-brand-danger">
+                  {selectedProducts.size} produk dipilih
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setSelectedProducts(new Set())}
+                    className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 border border-slate-200 bg-white rounded-lg transition-colors">
+                    Batalkan
+                  </button>
+                  <button onClick={handleBulkDelete} disabled={bulkDeleting}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-brand-danger px-3 py-1.5 rounded-lg active:scale-95 transition-all disabled:opacity-50">
+                    <Trash2 size={13} />
+                    {bulkDeleting ? 'Menghapus...' : `Hapus ${selectedProducts.size} Produk`}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -406,6 +456,12 @@ export default function DashboardPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wide">
+                        <th className="px-3 py-3 w-8">
+                          <input type="checkbox"
+                            checked={products.length > 0 && selectedProducts.size === products.length}
+                            onChange={toggleSelectAll}
+                            className="w-4 h-4 rounded accent-brand-green cursor-pointer" />
+                        </th>
                         <th className="text-left px-4 py-3">Produk</th>
                         <th className="text-left px-4 py-3">Kategori</th>
                         <th className="text-right px-4 py-3">Harga Jual</th>
@@ -416,7 +472,14 @@ export default function DashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {products.map(p => (
-                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={p.id}
+                          className={`hover:bg-slate-50 transition-colors ${selectedProducts.has(p.id) ? 'bg-red-50 hover:bg-red-50' : ''}`}>
+                          <td className="px-3 py-3 text-center">
+                            <input type="checkbox"
+                              checked={selectedProducts.has(p.id)}
+                              onChange={() => toggleSelectProduct(p.id)}
+                              className="w-4 h-4 rounded accent-brand-green cursor-pointer" />
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 bg-slate-100 rounded-lg overflow-hidden shrink-0">
@@ -448,7 +511,7 @@ export default function DashboardPage() {
                       ))}
                       {products.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center py-10">
+                          <td colSpan={7} className="text-center py-10">
                             <p className="text-slate-400 text-sm mb-3">Belum ada produk.</p>
                             <button onClick={handleSeedProducts} disabled={seeding}
                               className="text-sm bg-brand-light text-brand-green font-semibold px-4 py-2 rounded-xl border border-brand-green border-opacity-30 active:scale-95 transition-all disabled:opacity-50">
@@ -460,6 +523,12 @@ export default function DashboardPage() {
                     </tbody>
                   </table>
                 </div>
+                {products.length > 0 && (
+                  <div className="px-4 py-2 border-t border-slate-50 text-xs text-slate-400">
+                    {products.length} produk total
+                    {selectedProducts.size > 0 && ` · ${selectedProducts.size} dipilih`}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -699,9 +768,18 @@ export default function DashboardPage() {
 
       {/* Modals */}
       {showProductForm && (
-        <ProductForm product={editProduct} categories={productCategories}
+        <ProductForm
+          product={editProduct}
+          categories={productCategories}
+          existingNames={products
+            .filter(p => p.id !== editProduct?.id)
+            .map(p => p.name.toLowerCase())}
           onClose={() => { setShowProductForm(false); setEditProduct(null) }}
-          onSaved={() => {}} />
+          onSaved={() => {
+            setSavedMsg(editProduct ? `Produk berhasil diperbarui!` : 'Produk berhasil ditambahkan!')
+            setTimeout(() => setSavedMsg(''), 4000)
+          }}
+        />
       )}
       {showUserForm && (
         <UserForm user={editUser}
