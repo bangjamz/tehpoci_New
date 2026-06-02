@@ -60,6 +60,7 @@ export default function DashboardPage() {
   // ── Produk ─────────────────────────────────────────────────────────
   const [products, setProducts] = useState([])
   const [productLoading, setProductLoading] = useState(true)
+  const [productError, setProductError] = useState('')
   const [showProductForm, setShowProductForm] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [productCategories, setProductCategories] = useState([])
@@ -98,13 +99,20 @@ export default function DashboardPage() {
 
   // ── Load products ─────────────────────────────────────────────────
   useEffect(() => {
-    const q = query(collection(db, 'products'), orderBy('category'), orderBy('name'))
+    const q = query(collection(db, 'products'), orderBy('name'))
     return onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // sort client-side by category then name
+      data.sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name))
       setProducts(data)
       setProductCategories([...new Set(data.map(p => p.category).filter(Boolean))])
       setProductLoading(false)
-    }, () => setProductLoading(false))
+      setProductError('')
+    }, (err) => {
+      console.error('[Products] Firestore error:', err.code, err.message)
+      setProductError(err.message)
+      setProductLoading(false)
+    })
   }, [])
 
   // ── Load 7 days transactions for Ringkasan ────────────────────────
@@ -383,6 +391,12 @@ export default function DashboardPage() {
                 <Plus size={16} /> Tambah Produk
               </button>
             </div>
+
+            {productError && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-sm text-brand-danger">
+                ⚠️ Gagal memuat produk: <span className="font-mono text-xs">{productError}</span>
+              </div>
+            )}
 
             {productLoading ? (
               <div className="flex items-center justify-center h-32"><RefreshCw className="animate-spin text-brand-green" size={24} /></div>

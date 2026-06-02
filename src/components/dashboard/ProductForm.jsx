@@ -130,7 +130,8 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (e) {
-      setError('Gagal menyimpan: ' + e.message)
+      console.error('[ProductForm] Save error:', e.code, e.message)
+      setError('Gagal menyimpan: ' + (e.code === 'permission-denied' ? 'Akses ditolak. Pastikan kamu login sebagai Owner.' : e.message))
     } finally {
       setSaving(false)
     }
@@ -304,8 +305,13 @@ export default function ProductForm({ product, categories, onClose, onSaved }) {
             </button>
           </div>
 
-          {error && <p className="text-brand-danger text-sm bg-red-50 rounded-xl p-3">{error}</p>}
         </div>
+
+        {error && (
+          <div className="px-5 py-3 bg-red-50 border-t border-red-100">
+            <p className="text-brand-danger text-sm font-medium">⚠️ {error}</p>
+          </div>
+        )}
 
         <div className="p-5 border-t border-slate-100 flex gap-3">
           <button onClick={onClose} className="flex-1 border-2 border-slate-200 text-slate-600 font-semibold rounded-xl py-2.5 active:scale-95 transition-all">
