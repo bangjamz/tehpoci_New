@@ -60,19 +60,24 @@ export default function PosPage() {
 
   // Real-time products listener
   useEffect(() => {
+    // Hanya orderBy 1 field untuk menghindari kebutuhan composite index Firestore
     const q = query(
       collection(db, 'products'),
       where('is_active', '==', true),
-      orderBy('category'),
       orderBy('name')
     )
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      // Sort client-side: kategori dulu, lalu nama
+      data.sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name))
       setProducts(data)
       const cats = ['Semua', ...new Set(data.map(p => p.category).filter(Boolean))]
       setCategories(cats)
       setLoadingProducts(false)
-    }, () => setLoadingProducts(false))
+    }, (err) => {
+      console.error('[POS] Products error:', err.code, err.message)
+      setLoadingProducts(false)
+    })
     return unsub
   }, [])
 

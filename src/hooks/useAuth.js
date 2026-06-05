@@ -74,6 +74,7 @@ async function fetchOrBootstrapProfile(firebaseUser, { setUserProfile, setLoadin
   } catch (e) {
     console.error('[Auth] Error:', e.code, e.message)
     setProfileError(e.code + ': ' + e.message)
+    setLoading(false)
   }
 }
 
