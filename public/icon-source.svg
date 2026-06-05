@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background hijau brand -->
+  <rect width="512" height="512" rx="96" fill="#046A38"/>
+
+  <!-- Cangkir teh - body -->
+  <rect x="136" y="220" width="240" height="180" rx="20" fill="#FFC107"/>
+  <!-- Cangkir teh - bibir atas -->
+  <rect x="116" y="200" width="280" height="36" rx="14" fill="#FFD54F"/>
+  <!-- Cangkir teh - dasar -->
+  <ellipse cx="256" cy="400" rx="100" ry="16" fill="#E6A800"/>
+
+  <!-- Handle cangkir -->
+  <path d="M376 245 Q440 245 440 305 Q440 365 376 365" stroke="#FFD54F" stroke-width="28" fill="none" stroke-linecap="round"/>
+
+  <!-- Uap teh - 3 gelombang -->
+  <path d="M196 175 Q206 148 196 120" stroke="white" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M256 165 Q266 132 256 100" stroke="white" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <path d="M316 175 Q326 148 316 120" stroke="white" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Teh di dalam cangkir -->
+  <rect x="148" y="248" width="216" height="140" rx="10" fill="#8B4513" opacity="0.6"/>
+
+  <!-- Tulisan "TP" -->
+  <text x="256" y="345" font-family="Arial, sans-serif" font-weight="900" font-size="80" fill="white" text-anchor="middle" opacity="0.9">TP</text>
+</svg>
