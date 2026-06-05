@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore'
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore'
 import { signOut } from 'firebase/auth'
 import { db, auth } from '../lib/firebase'
 import { useAuthStore } from '../store/authStore'
@@ -22,14 +22,14 @@ import { Wifi, WifiOff, LogOut, RefreshCw, Search, Coffee } from 'lucide-react'
 
 export default function PosPage() {
   const { user, userProfile, lockPin } = useAuthStore()
-  const { cart, addToCart, updateQty, clearCart, getCartTotal, getCartTotalCost, getCartCount } = usePosStore()
+  const { cart, addToCart, updateQty, clearCart, getCartTotal, getCartTotalCost, getCartCount,
+          activeShift, setActiveShift, clearShift } = usePosStore()
 
   // Map productId → total qty in cart (sums all variants)
   const cartQtyMap = cart.reduce((acc, item) => {
     acc[item.productId] = (acc[item.productId] || 0) + item.qty
     return acc
   }, {})
-  const { activeShift, setActiveShift, clearShift } = usePosStore()
   const isOnline = useNetworkStatus()
 
   const [products, setProducts] = useState([])
@@ -47,31 +47,39 @@ export default function PosPage() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [lastTransaction, setLastTransaction] = useState(null)
 
-  // Load active shift
+  // Load active shift — verifikasi ke Firestore supaya shift lama (sudah tutup) tidak tersisa
   useEffect(() => {
     if (!user) return
+    // activeShift sudah ter-restore dari localStorage (persist) jika ada
+    // Tetap verifikasi ke Firestore untuk pastikan masih OPEN
     getActiveShift(user.uid)
       .then(shift => {
-        if (shift) setActiveShift(shift)
+        if (shift) {
+          setActiveShift(shift)   // shift masih OPEN di Firestore → pakai
+        } else {
+          clearShift()            // tidak ada shift OPEN → bersihkan (termasuk data stale dari localStorage)
+        }
         setShiftLoading(false)
       })
-      .catch(() => setShiftLoading(false))
+      .catch((err) => {
+        console.error('[POS] getActiveShift error:', err)
+        // Kalau Firestore gagal (offline), tetap gunakan shift dari localStorage
+        setShiftLoading(false)
+      })
   }, [user])
 
   // Real-time products listener
+  // Hanya orderBy('name') — single-field auto-index, tidak butuh composite index
+  // Filter is_active dilakukan di client agar query selalu berhasil
   useEffect(() => {
-    // Hanya orderBy 1 field untuk menghindari kebutuhan composite index Firestore
-    const q = query(
-      collection(db, 'products'),
-      where('is_active', '==', true),
-      orderBy('name')
-    )
+    const q = query(collection(db, 'products'), orderBy('name'))
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      // Sort client-side: kategori dulu, lalu nama
-      data.sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name))
-      setProducts(data)
-      const cats = ['Semua', ...new Set(data.map(p => p.category).filter(Boolean))]
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      const active = all
+        .filter(p => p.is_active)
+        .sort((a, b) => (a.category || '').localeCompare(b.category || '') || a.name.localeCompare(b.name))
+      setProducts(active)
+      const cats = ['Semua', ...new Set(active.map(p => p.category).filter(Boolean))]
       setCategories(cats)
       setLoadingProducts(false)
     }, (err) => {

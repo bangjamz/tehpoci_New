@@ -1,7 +1,10 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
-export const usePosStore = create((set, get) => ({
-  // Shift aktif
+export const usePosStore = create(
+  persist(
+    (set, get) => ({
+  // Shift aktif — disimpan di localStorage supaya restore otomatis saat browser ditutup/dibuka
   activeShift: null,
   setActiveShift: (shiftOrUpdater) => set(state => ({
     activeShift: typeof shiftOrUpdater === 'function'
@@ -70,4 +73,12 @@ export const usePosStore = create((set, get) => ({
 
   getCartCount: () =>
     get().cart.reduce((sum, i) => sum + i.qty, 0),
-}))
+    }),
+    {
+      name: 'tp-pos-store',
+      // Hanya persist activeShift — cart sengaja tidak dipersist supaya
+      // selalu mulai bersih saat browser dibuka kembali
+      partialize: (state) => ({ activeShift: state.activeShift }),
+    }
+  )
+)

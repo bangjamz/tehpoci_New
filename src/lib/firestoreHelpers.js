@@ -10,16 +10,26 @@ const STORE_ID = 'branch_01'
 // ── Shifts ────────────────────────────────────────────────────────────────────
 
 export async function getActiveShift(cashierUid) {
+  // Hanya 1 where clause untuk menghindari composite index Firestore.
+  // Filter status=OPEN & sort start_time dilakukan di client.
   const q = query(
     collection(db, 'stores', STORE_ID, 'shifts'),
-    where('status', '==', 'OPEN'),
     where('cashier_uid', '==', cashierUid),
-    orderBy('start_time', 'desc'),
-    limit(1)
+    limit(30)
   )
   const snap = await getDocs(q)
   if (snap.empty) return null
-  return { id: snap.docs[0].id, ...snap.docs[0].data() }
+
+  const shifts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const openShift = shifts
+    .filter(s => s.status === 'OPEN')
+    .sort((a, b) => {
+      const ta = a.start_time?.toMillis?.() || 0
+      const tb = b.start_time?.toMillis?.() || 0
+      return tb - ta
+    })[0]
+
+  return openShift || null
 }
 
 export async function openShift({ cashierUid, cashierName, initialCash }) {
@@ -97,14 +107,12 @@ export async function updateShiftExpectedCash(shiftId, addAmount) {
 // ── Products ──────────────────────────────────────────────────────────────────
 
 export async function getProducts() {
-  const q = query(
-    collection(db, 'products'),
-    where('is_active', '==', true),
-    orderBy('category'),
-    orderBy('name')
-  )
+  // Hanya orderBy('name') — auto-index, tidak butuh composite index
+  const q = query(collection(db, 'products'), orderBy('name'))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(p => p.is_active)
 }
 
 // ── Seed Data ─────────────────────────────────────────────────────────────────
