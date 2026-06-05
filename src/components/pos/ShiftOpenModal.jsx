@@ -16,8 +16,8 @@ export default function ShiftOpenModal({ onOpen, onLogout, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (amount <= 0) return
-    onOpen(amount)
+    if (raw === '') return   // hanya blokir kalau belum diisi sama sekali
+    onOpen(amount)           // amount bisa 0 (kasir mulai tanpa modal)
   }
 
   return (
@@ -70,7 +70,7 @@ export default function ShiftOpenModal({ onOpen, onLogout, loading }) {
 
             <button
               type="submit"
-              disabled={amount <= 0 || loading}
+              disabled={raw === '' || loading}
               className="w-full touch-target bg-brand-green text-white font-bold rounded-xl py-3 active:scale-95 transition-all disabled:opacity-40"
             >
               {loading ? 'Membuka Shift...' : 'Buka Shift →'}

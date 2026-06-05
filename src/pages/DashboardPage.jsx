@@ -91,8 +91,10 @@ export default function DashboardPage() {
   })
   const [exportTo, setExportTo] = useState(() => toDateInputValue(new Date()))
   const [reportTxs, setReportTxs] = useState([])
+  const [reportShifts, setReportShifts] = useState([])
   const [reportLoaded, setReportLoaded] = useState(false)
   const [reportLoading, setReportLoading] = useState(false)
+  const [reportTab, setReportTab] = useState('shift') // 'shift' | 'transaksi'
 
   // ── Administrator: Reset (super owner only) ────────────────────────
   const [resetStep, setResetStep] = useState(0)
@@ -238,19 +240,64 @@ export default function DashboardPage() {
     const from = new Date(exportFrom + 'T00:00:00')
     const to = new Date(exportTo + 'T23:59:59')
     try {
-      const snap = await getDocs(query(
-        collection(db, 'stores', STORE_ID, 'transactions'),
-        where('timestamp', '>=', from),
-        where('timestamp', '<=', to),
-        orderBy('timestamp', 'desc')
-      ))
-      setReportTxs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      // Fetch transaksi dan shift secara paralel
+      const [txSnap, shiftSnap] = await Promise.all([
+        getDocs(query(
+          collection(db, 'stores', STORE_ID, 'transactions'),
+          where('timestamp', '>=', from),
+          where('timestamp', '<=', to),
+          orderBy('timestamp', 'desc')
+        )),
+        // range filter + orderBy pada field yang sama = tidak butuh composite index
+        getDocs(query(
+          collection(db, 'stores', STORE_ID, 'shifts'),
+          where('start_time', '>=', from),
+          where('start_time', '<=', to),
+          orderBy('start_time', 'desc')
+        )),
+      ])
+      setReportTxs(txSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setReportShifts(shiftSnap.docs.map(d => ({ id: d.id, ...d.data() })))
       setReportLoaded(true)
     } finally { setReportLoading(false) }
   }
 
   const handleExport = () => {
     exportCSV(reportTxs, `${exportFrom}_sd_${exportTo}`)
+  }
+
+  const handleExportShifts = () => {
+    const rows = [['Tanggal', 'Jam Buka', 'Jam Tutup', 'Kasir', 'Modal Awal (Rp)', 'Kas Akhir (Rp)', 'Selisih (Rp)', 'Status', 'Jml Transaksi', 'Total Penjualan (Rp)']]
+    const txByShift = reportTxs.reduce((acc, t) => {
+      if (!acc[t.shift_id]) acc[t.shift_id] = []
+      acc[t.shift_id].push(t)
+      return acc
+    }, {})
+    reportShifts.forEach(s => {
+      const start = s.start_time?.toDate ? s.start_time.toDate() : new Date(0)
+      const end = s.end_time?.toDate ? s.end_time.toDate() : null
+      const shiftTxs = txByShift[s.id] || []
+      rows.push([
+        start.toLocaleDateString('id-ID'),
+        start.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+        end ? end.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-',
+        s.cashier_name || '',
+        s.initial_cash || 0,
+        s.actual_cash ?? '-',
+        s.variance ?? '-',
+        s.status,
+        shiftTxs.length,
+        shiftTxs.reduce((sum, t) => sum + (t.total_amount || 0), 0),
+      ])
+    })
+    const csv = rows.map(r => r.join(',')).join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `laporan-shift-${exportFrom}_sd_${exportTo}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   // ── Handlers: Reset ────────────────────────────────────────────────
@@ -637,10 +684,11 @@ export default function DashboardPage() {
             <section>
               <div className="mb-3">
                 <h2 className="font-bold text-slate-900">Laporan & Export CSV</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Pilih rentang tanggal lalu muat laporan. File CSV bisa dibuka di Excel atau Google Sheets.</p>
+                <p className="text-slate-400 text-xs mt-0.5">Pilih rentang tanggal lalu muat laporan. Termasuk laporan shift per kasir.</p>
               </div>
 
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                {/* Date range picker */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase tracking-wide">Dari Tanggal</label>
@@ -659,49 +707,138 @@ export default function DashboardPage() {
                   {reportLoading ? <><RefreshCw size={15} className="animate-spin" /> Memuat...</> : 'Muat Laporan'}
                 </button>
 
-                {reportLoaded && (
-                  <>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { label: 'Transaksi', val: reportTxs.length, unit: 'txn' },
-                        { label: 'Total Penjualan', val: formatRupiah(reportTxs.reduce((s, t) => s + (t.total_amount || 0), 0)), unit: '' },
-                        { label: 'Laba Kotor', val: formatRupiah(reportTxs.reduce((s, t) => s + (t.total_amount || 0) - (t.total_cost || 0), 0)), unit: '' },
-                      ].map(({ label, val }) => (
-                        <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
-                          <p className="text-xs text-slate-500">{label}</p>
-                          <p className="font-bold text-slate-900 mt-0.5 text-sm">{val}</p>
-                        </div>
-                      ))}
-                    </div>
+                {reportLoaded && (() => {
+                  // Hitung transaksi per shift untuk tampilan
+                  const txByShift = reportTxs.reduce((acc, t) => {
+                    if (!acc[t.shift_id]) acc[t.shift_id] = []
+                    acc[t.shift_id].push(t)
+                    return acc
+                  }, {})
 
-                    {reportTxs.length > 0 ? (
-                      <>
-                        <div className="max-h-60 overflow-y-auto divide-y divide-slate-50 border border-slate-100 rounded-xl">
-                          {reportTxs.map(t => {
-                            const ts = t.timestamp?.toDate ? t.timestamp.toDate() : new Date()
-                            return (
-                              <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-medium text-slate-800">
-                                    {ts.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} · {ts.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
-                                  </p>
-                                  <p className="text-xs text-slate-400">{t.cashier_name} · {t.payment_method}</p>
-                                </div>
-                                <span className="text-xs font-bold text-slate-900 shrink-0">{formatRupiah(t.total_amount)}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        <button onClick={handleExport}
-                          className="w-full flex items-center justify-center gap-2 border-2 border-brand-green text-brand-green font-bold py-2.5 rounded-xl active:scale-95 transition-all text-sm">
-                          <Download size={16} /> Export CSV ({reportTxs.length} transaksi)
-                        </button>
-                      </>
-                    ) : (
-                      <p className="text-center text-slate-400 text-sm py-4">Tidak ada transaksi di rentang tanggal ini.</p>
-                    )}
-                  </>
-                )}
+                  return (
+                    <>
+                      {/* Ringkasan total */}
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Shift', val: reportShifts.length },
+                          { label: 'Transaksi', val: reportTxs.length },
+                          { label: 'Total Penjualan', val: formatRupiah(reportTxs.reduce((s, t) => s + (t.total_amount || 0), 0)) },
+                        ].map(({ label, val }) => (
+                          <div key={label} className="bg-slate-50 rounded-xl p-3 text-center">
+                            <p className="text-xs text-slate-500">{label}</p>
+                            <p className="font-bold text-slate-900 mt-0.5 text-sm">{val}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Sub-tab: Shift | Transaksi */}
+                      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+                        {[['shift', 'Laporan Shift'], ['transaksi', 'Detail Transaksi']].map(([key, label]) => (
+                          <button key={key} onClick={() => setReportTab(key)}
+                            className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${reportTab === key ? 'bg-white text-brand-green shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* ── Laporan Shift ── */}
+                      {reportTab === 'shift' && (
+                        reportShifts.length === 0 ? (
+                          <p className="text-center text-slate-400 text-sm py-4">Tidak ada shift di rentang tanggal ini.</p>
+                        ) : (
+                          <>
+                            <div className="overflow-x-auto rounded-xl border border-slate-100">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wide">
+                                    <th className="text-left px-3 py-2.5">Tanggal</th>
+                                    <th className="text-left px-3 py-2.5">Kasir</th>
+                                    <th className="text-right px-3 py-2.5">Buka</th>
+                                    <th className="text-right px-3 py-2.5">Tutup</th>
+                                    <th className="text-right px-3 py-2.5">Modal</th>
+                                    <th className="text-right px-3 py-2.5">Kas Akhir</th>
+                                    <th className="text-right px-3 py-2.5">Selisih</th>
+                                    <th className="text-center px-3 py-2.5">Tx</th>
+                                    <th className="text-right px-3 py-2.5">Penjualan</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50">
+                                  {reportShifts.map(s => {
+                                    const start = s.start_time?.toDate ? s.start_time.toDate() : null
+                                    const end = s.end_time?.toDate ? s.end_time.toDate() : null
+                                    const shiftTxs = txByShift[s.id] || []
+                                    const totalSales = shiftTxs.reduce((sum, t) => sum + (t.total_amount || 0), 0)
+                                    const variance = s.variance ?? null
+                                    const isClosed = s.status === 'CLOSED'
+                                    return (
+                                      <tr key={s.id} className="hover:bg-slate-50">
+                                        <td className="px-3 py-2.5 text-slate-700 whitespace-nowrap">
+                                          {start ? start.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'}
+                                        </td>
+                                        <td className="px-3 py-2.5 font-medium text-slate-800 max-w-[80px] truncate">{s.cashier_name || '-'}</td>
+                                        <td className="px-3 py-2.5 text-right text-slate-500 whitespace-nowrap">
+                                          {start ? start.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-slate-500 whitespace-nowrap">
+                                          {isClosed && end ? end.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : (
+                                            <span className="text-brand-green font-semibold">Aktif</span>
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-right text-slate-600">{formatRupiah(s.initial_cash || 0)}</td>
+                                        <td className="px-3 py-2.5 text-right text-slate-600">
+                                          {isClosed ? formatRupiah(s.actual_cash || 0) : '-'}
+                                        </td>
+                                        <td className={`px-3 py-2.5 text-right font-semibold ${!isClosed ? 'text-slate-300' : variance < 0 ? 'text-brand-danger' : variance > 0 ? 'text-brand-green' : 'text-slate-500'}`}>
+                                          {isClosed ? (variance === 0 ? '0' : formatRupiah(variance)) : '-'}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-bold text-slate-700">{shiftTxs.length}</td>
+                                        <td className="px-3 py-2.5 text-right font-semibold text-brand-green">{formatRupiah(totalSales)}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                            <button onClick={handleExportShifts}
+                              className="w-full flex items-center justify-center gap-2 border-2 border-slate-200 text-slate-600 font-semibold py-2.5 rounded-xl active:scale-95 transition-all text-sm hover:border-brand-green hover:text-brand-green">
+                              <Download size={15} /> Export Shift CSV ({reportShifts.length} shift)
+                            </button>
+                          </>
+                        )
+                      )}
+
+                      {/* ── Detail Transaksi ── */}
+                      {reportTab === 'transaksi' && (
+                        reportTxs.length === 0 ? (
+                          <p className="text-center text-slate-400 text-sm py-4">Tidak ada transaksi di rentang tanggal ini.</p>
+                        ) : (
+                          <>
+                            <div className="max-h-64 overflow-y-auto divide-y divide-slate-50 border border-slate-100 rounded-xl">
+                              {reportTxs.map(t => {
+                                const ts = t.timestamp?.toDate ? t.timestamp.toDate() : new Date()
+                                return (
+                                  <div key={t.id} className="flex items-center gap-3 px-4 py-2.5">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-medium text-slate-800">
+                                        {ts.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} · {ts.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                                      </p>
+                                      <p className="text-xs text-slate-400">{t.cashier_name} · {t.payment_method}</p>
+                                    </div>
+                                    <span className="text-xs font-bold text-slate-900 shrink-0">{formatRupiah(t.total_amount)}</span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <button onClick={handleExport}
+                              className="w-full flex items-center justify-center gap-2 border-2 border-brand-green text-brand-green font-bold py-2.5 rounded-xl active:scale-95 transition-all text-sm">
+                              <Download size={16} /> Export Transaksi CSV ({reportTxs.length} transaksi)
+                            </button>
+                          </>
+                        )
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             </section>
 

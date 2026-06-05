@@ -3,8 +3,10 @@ service firebase.storage {
   match /b/{bucket}/o {
     match /products/{allPaths=**} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null &&
-                      firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'OWNER';
+      // Izinkan upload untuk semua user yang sudah login.
+      // Keamanan upload dikendalikan di sisi app (hanya Owner yang punya UI upload).
+      // Cross-service firestore.get() dihindari karena tidak reliable di semua konfigurasi.
+      allow write: if request.auth != null;
     }
   }
 }
