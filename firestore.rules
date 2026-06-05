@@ -25,9 +25,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if request.auth.uid == userId || isOwner();
-      allow create: if request.auth.uid == userId
-                    && request.resource.data.role in ['OWNER', 'CASHIER']
-                    && request.resource.data.uid == request.auth.uid;
+      // Self-register (Owner pertama kali login) ATAU Owner membuat akun kasir
+      allow create: if (request.auth.uid == userId && request.resource.data.uid == request.auth.uid)
+                    || (isOwner() && request.resource.data.role == 'CASHIER' && request.resource.data.uid == userId);
       allow update, delete: if isOwner();
     }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { initializeApp, deleteApp } from 'firebase/app'
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth'
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
+import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db, firebaseConfig } from '../../lib/firebase'
 import { X, Eye, EyeOff } from 'lucide-react'
 
@@ -36,16 +36,41 @@ export default function UserForm({ user: editUser, onClose, onSaved }) {
         // Gunakan secondary app agar Owner tidak ter-logout saat membuat akun kasir
         const secondaryApp = initializeApp(firebaseConfig, `create-user-${Date.now()}`)
         const secondaryAuth = getAuth(secondaryApp)
-        let cred
+        let uid
         try {
-          cred = await createUserWithEmailAndPassword(secondaryAuth, form.email, form.password)
+          // Coba buat akun baru
+          const cred = await createUserWithEmailAndPassword(secondaryAuth, form.email, form.password)
+          uid = cred.user.uid
+        } catch (authErr) {
+          if (authErr.code === 'auth/email-already-in-use') {
+            // Akun Auth sudah ada (kemungkinan Firestore-nya yang gagal sebelumnya)
+            // Login dengan secondary app untuk ambil UID-nya
+            try {
+              const cred = await signInWithEmailAndPassword(secondaryAuth, form.email, form.password)
+              uid = cred.user.uid
+              // Cek apakah dokumen Firestore sudah ada
+              const existing = await getDoc(doc(db, 'users', uid))
+              if (existing.exists()) {
+                throw new Error('Email sudah terdaftar dan profil kasir sudah ada. Cari di daftar kasir.')
+              }
+              // Dokumen belum ada → lanjut buat Firestore doc (recovery)
+            } catch (signInErr) {
+              if (signInErr.code === 'auth/wrong-password' || signInErr.code === 'auth/invalid-credential') {
+                throw new Error('Email sudah terdaftar dengan password berbeda. Gunakan password yang sama atau hubungi Super Owner.')
+              }
+              throw signInErr
+            }
+          } else {
+            throw authErr
+          }
         } finally {
           await secondaryAuth.signOut()
           await deleteApp(secondaryApp)
         }
-        await setDoc(doc(db, 'users', cred.user.uid), {
-          uid: cred.user.uid,
-          email: form.email,
+
+        await setDoc(doc(db, 'users', uid), {
+          uid,
+          email: form.email.trim().toLowerCase(),
           display_name: form.display_name.trim(),
           role: 'CASHIER',
           is_active: true,
@@ -68,9 +93,9 @@ export default function UserForm({ user: editUser, onClose, onSaved }) {
       onSaved?.()
       onClose()
     } catch (e) {
-      if (e.code === 'auth/email-already-in-use') setError('Email sudah terdaftar')
-      else if (e.code === 'auth/invalid-email') setError('Format email tidak valid')
-      else setError('Gagal: ' + e.message)
+      if (e.code === 'auth/invalid-email') setError('Format email tidak valid')
+      else if (e.code === 'auth/weak-password') setError('Password terlalu lemah (min. 6 karakter)')
+      else setError(e.message || 'Gagal menyimpan')
     } finally {
       setSaving(false)
     }
